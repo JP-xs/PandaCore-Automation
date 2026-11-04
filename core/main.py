@@ -32,7 +32,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core.ai_handler import AIHandler
+from core.ai_handler import AIError, AIHandler
 from core.browser import ExtractionResult, LightpandaBrowser
 from core.config import settings
 
@@ -57,6 +57,9 @@ class AnalyzeRequest(BaseModel):
 
 class PipelineRequest(AnalyzeRequest):
     url: str = Field(..., description="URL de la pagina a extraer y analizar")
+    text: Optional[str] = Field(
+        None, description="Texto opcional; si no se envia, se extrae de la URL"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -75,6 +78,7 @@ async def lifespan(app: FastAPI):
     # Conexion perezosa: el servidor arranca aunque Lightpanda este temporalmente
     # inaccesible. La primera peticion a /extract o /pipeline se encargara de
     # conectar (con reintentos) y /health reportara el estado real.
+    app.state = state
     logger.info(
         "Motor Core listo. Lightpanda configurada en: %s (conexion bajo demanda)",
         settings.LIGHTPANDA_URL,
