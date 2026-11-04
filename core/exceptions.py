@@ -2,39 +2,50 @@
 core/exceptions.py
 ==================
 
-Excepciones personalizadas del Motor Core.
+Excepciones personalizadas del Motor Core (feature/panda-core).
 
-Cada capa (navegador, IA, configuración) define sus propias excepciones para
-permitir un manejo de errores preciso y reintentos selectivos solo en los casos
-que realmente lo ameritan (fallos de red, servidor caído, timeouts).
+Cada excepción está diseñada para ser capturada en los endpoints de FastAPI
+y traducirse a respuestas HTTP apropiadas.
 """
 
 from __future__ import annotations
 
 
+# --------------------------------------------------------------------------- #
+# Excepciones de Lightpanda (navegador headless)
+# --------------------------------------------------------------------------- #
+
 class LightpandaError(Exception):
-    """Excepción base de errores relacionados con Lightpanda / CDP."""
+    """Excepción base para errores relacionados con Lightpanda."""
 
 
 class LightpandaConnectionError(LightpandaError):
-    """No se pudo establecer o mantener la conexión con Lightpanda (servidor caído o red)."""
+    """No se pudo conectar con Lightpanda (CDP) o el servidor está inaccesible."""
 
 
 class LightpandaNavigationError(LightpandaError):
-    """Error al navegar a una URL (p. ej. página no responde, timeout de carga)."""
+    """Error al navegar a una URL o crear un target en Lightpanda."""
 
 
 class LightpandaExtractionError(LightpandaError):
-    """Error al extraer el contenido (texto / HTML) de una página."""
+    """Error al extraer contenido (HTML/texto) de una página mediante LP.dump."""
 
+
+# --------------------------------------------------------------------------- #
+# Excepciones de IA (OpenAI / Anthropic)
+# --------------------------------------------------------------------------- #
 
 class AIError(Exception):
-    """Excepción base de errores de Inteligencia Artificial."""
+    """Excepción base para errores de proveedores de IA."""
 
 
 class AIProviderError(AIError):
-    """Error específico de un proveedor de IA (clave faltante, proveedor desconocido, cuota excedida, etc.)."""
+    """Error relacionado con un proveedor de IA específico."""
 
 
-class ConfigurationError(Exception):
-    """Error de configuración (variable de entorno requerida ausente o inválida)."""
+class AIConfigurationError(AIProviderError):
+    """Falta configuración (API key, modelo) para el proveedor de IA seleccionado."""
+
+
+class AIRequestError(AIProviderError):
+    """Error al realizar una petición al proveedor de IA (timeout, respuesta inválida, etc.)."""
