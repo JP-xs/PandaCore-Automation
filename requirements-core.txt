@@ -1,0 +1,14 @@
+# Dependencias del Motor Core (feature/panda-core) - JPxs-LightPanda-AI
+# Instalar con: pip install -r requirements-core.txt
+
+fastapi>=0.100.0,<0.150.0
+uvicorn>=0.20.0,<0.52.0
+pydantic-settings>=2.0.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+websockets>=11.0,<13.0
+httpx>=0.24.0,<0.27.0
+tenacity>=8.0.0,<9.0.0
+
+# SDKs de proveedores de IA (instalar segun los proveedores que se vayan a usar)
+openai>=1.0.0,<2.0.0
+anthropic>=0.30.0,<1.0.0
