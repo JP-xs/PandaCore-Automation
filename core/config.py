@@ -10,7 +10,7 @@ claves de IA SIN modificar el código fuente.
 
 Uso:
     from core.config import settings
-    print(settings.LIGHTPANDA_URL)
+    print(settings.LIGHT_PANDA_URL)
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------ #
     # Lightpanda (navegador headless - CDP)
     # ------------------------------------------------------------------ #
-    LIGHTPANDA_URL: str = Field(
+    LIGHT_PANDA_URL: str = Field(
         default="http://127.0.0.1:9222",
         description="Endpoint HTTP de Lightpanda. Local: http://127.0.0.1:9222 | OpenCloud: http://<IP-VPS>:9222",
     )

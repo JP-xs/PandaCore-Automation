@@ -35,6 +35,12 @@ from pydantic import BaseModel, Field
 from core.ai_handler import AIError, AIHandler
 from core.browser import ExtractionResult, LightpandaBrowser
 from core.config import settings
+from core.exceptions import (
+    LightpandaConnectionError,
+    LightpandaError,
+    LightpandaExtractionError,
+    LightpandaNavigationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +63,9 @@ class AnalyzeRequest(BaseModel):
 
 class PipelineRequest(AnalyzeRequest):
     url: str = Field(..., description="URL de la pagina a extraer y analizar")
+    prompt: Optional[str] = Field(
+        None, description="Prompt de investigacion (alias de system_prompt)"
+    )
     text: Optional[str] = Field(
         None, description="Texto opcional; si no se envia, se extrae de la URL"
     )
@@ -81,7 +90,7 @@ async def lifespan(app: FastAPI):
     app.state = state
     logger.info(
         "Motor Core listo. Lightpanda configurada en: %s (conexion bajo demanda)",
-        settings.LIGHTPANDA_URL,
+        settings.LIGHT_PANDA_URL,
     )
     yield
     await state.browser.stop()
@@ -108,14 +117,14 @@ async def health() -> Dict[str, Any]:
     lightpanda_ok = False
     try:
         async with httpx.AsyncClient(timeout=settings.CDP_CONNECT_TIMEOUT) as client:
-            resp = await client.get(f"{settings.LIGHTPANDA_URL}/json/version")
+            resp = await client.get(f"{settings.LIGHT_PANDA_URL}/json/version")
             lightpanda_ok = resp.is_success
     except Exception as exc:  # noqa: BLE001
         logger.warning("Health check de Lightpanda fallo: %s", exc)
 
     return {
         "status": "ok" if lightpanda_ok else "degraded",
-        "lightpanda_url": settings.LIGHTPANDA_URL,
+        "lightpanda_url": settings.LIGHT_PANDA_URL,
         "lightpanda_reachable": lightpanda_ok,
         "ai_providers": AIHandler().available_providers,
     }
@@ -125,7 +134,23 @@ async def health() -> Dict[str, Any]:
 async def extract(request: ExtractRequest, fastapi_request: Request) -> Dict[str, Any]:
     """Extrae titulo, texto plano y HTML de una URL (sin IA)."""
     state: AppState = fastapi_request.app.state
-    result: ExtractionResult = await state.browser.navigate_and_extract(request.url)
+    try:
+        result: ExtractionResult = await state.browser.navigate_and_extract(request.url)
+    except LightpandaConnectionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No se pudo conectar con Lightpanda: {exc}",
+        ) from exc
+    except (LightpandaNavigationError, LightpandaExtractionError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+    except LightpandaError as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
     return {
         "url": result.url,
         "title": result.title,
@@ -162,7 +187,23 @@ async def pipeline(request: PipelineRequest, fastapi_request: Request) -> Dict[s
     state: AppState = fastapi_request.app.state
 
     # 1. Extraccion con Lightpanda
-    result: ExtractionResult = await state.browser.navigate_and_extract(request.url)
+    try:
+        result: ExtractionResult = await state.browser.navigate_and_extract(request.url)
+    except LightpandaConnectionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No se pudo conectar con Lightpanda: {exc}",
+        ) from exc
+    except (LightpandaNavigationError, LightpandaExtractionError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+    except LightpandaError as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
 
     # 2. Analisis con IA sobre el texto extraido
     ai = AIHandler()
@@ -171,7 +212,7 @@ async def pipeline(request: PipelineRequest, fastapi_request: Request) -> Dict[s
             text=result.text,
             provider=request.provider,
             model=request.model,
-            system_prompt=request.system_prompt,
+            system_prompt=request.prompt or request.system_prompt,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )

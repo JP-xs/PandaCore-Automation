@@ -194,7 +194,7 @@ class LightpandaBrowser:
     """Navegador de alto nivel sobre Lightpanda vía CDP (protocolo nativo)."""
 
     def __init__(self, lightpanda_url: Optional[str] = None) -> None:
-        self.lightpanda_url = (lightpanda_url or settings.LIGHTPANDA_URL).rstrip("/")
+        self.lightpanda_url = (lightpanda_url or settings.LIGHT_PANDA_URL).rstrip("/")
         self._session: Optional[CDPSession] = None
 
     async def start(self) -> None:
