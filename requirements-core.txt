@@ -9,6 +9,6 @@ websockets>=11.0,<13.0
 httpx>=0.24.0,<0.27.0
 tenacity>=8.0.0,<9.0.0
 
-# SDKs de proveedores de IA (instalar segun los proveedores que se vayan a usar)
-openai>=1.0.0,<2.0.0
-anthropic>=0.30.0,<1.0.0
+# Unico proveedor de IA: OpenCode (API compatible con OpenAI via httpx)
+# No se requiere el SDK de openai ni anthropic.
+
