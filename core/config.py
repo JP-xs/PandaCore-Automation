@@ -5,8 +5,8 @@ core/config.py
 Configuración centralizada del Motor Core (feature/panda-core).
 
 Todas las variables se leen del entorno o del archivo .env. Esto permite cambiar
-la URL del navegador (localhost vs IP de VPS en OpenCloud), los puertos y las
-claves de IA SIN modificar el código fuente.
+la URL del navegador (localhost vs IP de VPS en OpenCloud), los puertos y la
+clave de IA SIN modificar el código fuente.
 
 Uso:
     from core.config import settings
@@ -59,17 +59,24 @@ class Settings(BaseSettings):
     RETRY_BACKOFF: float = Field(default=2.0)
 
     # ------------------------------------------------------------------ #
-    # Claves de proveedores de IA
+    # OpenCode (único proveedor de IA - API gratuita)
     # ------------------------------------------------------------------ #
-    OPENAI_API_KEY: str = Field(default="")
-    ANTHROPIC_API_KEY: str = Field(default="")
+    OPENCODE_API_KEY: str = Field(
+        default="",
+        description="Clave de API de OpenCode (ej. oc_sk_...).",
+    )
+    OPENCODE_BASE_URL: str = Field(
+        default="https://api.opencode.com/v1",
+        description="URL base de la API de OpenCode (OpenAI-compatible).",
+    )
 
     # ------------------------------------------------------------------ #
-    # Modelo de IA por defecto
+    # Proveedor y modelo de IA por defecto (únicamente OpenCode)
     # ------------------------------------------------------------------ #
-    DEFAULT_AI_PROVIDER: str = Field(default="openai")
-    DEFAULT_AI_MODEL: str = Field(default="gpt-4o-mini")
+    DEFAULT_AI_PROVIDER: str = Field(default="open_code")
+    DEFAULT_AI_MODEL: str = Field(default="nemotron-3.5-super-vl-2024-10-22")
 
 
 # Instancia singleton de configuración
 settings = Settings()
+

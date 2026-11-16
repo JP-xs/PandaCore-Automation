@@ -11,15 +11,15 @@ Expone una API HTTP desacoplada que la UI (Streamlit, Worktree 2) consume para:
   - Pipeline completo (extraer + analizar):    POST /pipeline
 
 El Core NO sabe nada de botones ni pantallas visuales. Solo habla con Lightpanda
-(CDP) y con las APIs de IA (OpenAI / Anthropic).
+(CDP) y con la API de OpenCode (único proveedor de IA, modelos gratuitos).
 
 Endpoints esperados por la UI (ui/app.py de feature/panda-ui):
-  - POST /pipeline  -> {url, provider, model, system_prompt, temperature, max_tokens}
+  - POST /pipeline  -> {url, prompt, provider, model, temperature, max_tokens}
                        -> {extraction: {title, text, status_code}, analysis: {provider, model, content}}
   - POST /extract   -> {url}                      -> {url, title, text, html, status_code}
   - POST /analyze   -> {text, provider, model, system_prompt, temperature, max_tokens}
-                      -> {provider, model, content}
-  - GET  /health    -> {status, lightpanda_reachable, ...}
+                       -> {provider, model, content}
+  - GET  /health    -> {status: "ok"}
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -48,18 +47,22 @@ class ExtractRequest(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., description="Texto a analizar con IA")
-    provider: Optional[str] = Field(None, description="openai | anthropic")
-    model: Optional[str] = Field(None, description="Modelo concreto del proveedor")
+    provider: Optional[str] = Field(None, description="open_code")
+    model: Optional[str] = Field(None, description="Modelo concreto de OpenCode")
     system_prompt: Optional[str] = Field(None, description="Prompt de sistema opcional")
     temperature: float = Field(0.3, ge=0.0, le=1.0)
     max_tokens: int = Field(2000, ge=256, le=8192)
 
 
-class PipelineRequest(AnalyzeRequest):
+class PipelineRequest(BaseModel):
     url: str = Field(..., description="URL de la pagina a extraer y analizar")
-    text: Optional[str] = Field(
-        None, description="Texto opcional; si no se envia, se extrae de la URL"
+    prompt: Optional[str] = Field(
+        None, description="Prompt de investigacion para el analisis con IA"
     )
+    provider: Optional[str] = Field(None, description="open_code")
+    model: Optional[str] = Field(None, description="Modelo concreto de OpenCode")
+    temperature: float = Field(0.3, ge=0.0, le=1.0)
+    max_tokens: int = Field(2000, ge=256, le=8192)
 
 
 # --------------------------------------------------------------------------- #
@@ -85,6 +88,7 @@ async def lifespan(app: FastAPI):
     )
     yield
     await state.browser.stop()
+    await state.ai.close()
     logger.info("Motor Core detenido.")
 
 
@@ -93,7 +97,7 @@ app = FastAPI(
     version="1.0.0",
     description=(
         "Extraccion web con Lightpanda (CDP) + analisis con IA "
-        "(OpenAI / Anthropic). Arquitectura desacoplada para tesis y datos."
+        "(OpenCode - modelos gratuitos). Arquitectura desacoplada para tesis y datos."
     ),
     lifespan=lifespan,
 )
@@ -104,21 +108,8 @@ app = FastAPI(
 # --------------------------------------------------------------------------- #
 @app.get("/health", tags=["Estado"])
 async def health() -> Dict[str, Any]:
-    """Estado del servicio y de la conexion con Lightpanda."""
-    lightpanda_ok = False
-    try:
-        async with httpx.AsyncClient(timeout=settings.CDP_CONNECT_TIMEOUT) as client:
-            resp = await client.get(f"{settings.LIGHTPANDA_URL}/json/version")
-            lightpanda_ok = resp.is_success
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Health check de Lightpanda fallo: %s", exc)
-
-    return {
-        "status": "ok" if lightpanda_ok else "degraded",
-        "lightpanda_url": settings.LIGHTPANDA_URL,
-        "lightpanda_reachable": lightpanda_ok,
-        "ai_providers": AIHandler().available_providers,
-    }
+    """Estado del servicio del motor Core."""
+    return {"status": "ok"}
 
 
 @app.post("/extract", tags=["Extraccion"])
@@ -137,7 +128,7 @@ async def extract(request: ExtractRequest, fastapi_request: Request) -> Dict[str
 
 @app.post("/analyze", tags=["IA"])
 async def analyze(request: AnalyzeRequest) -> Dict[str, Any]:
-    """Analiza un texto con el proveedor y modelo de IA indicados."""
+    """Analiza un texto con OpenCode."""
     ai = AIHandler()
     try:
         outcome = await ai.analyze(
@@ -149,10 +140,13 @@ async def analyze(request: AnalyzeRequest) -> Dict[str, Any]:
             max_tokens=request.max_tokens,
         )
     except AIError as exc:
+        await ai.close()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
+        await ai.close()
         logger.error("Error inesperado en /analyze: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    await ai.close()
     return outcome
 
 
@@ -165,18 +159,16 @@ async def pipeline(request: PipelineRequest, fastapi_request: Request) -> Dict[s
     result: ExtractionResult = await state.browser.navigate_and_extract(request.url)
 
     # 2. Analisis con IA sobre el texto extraido
-    ai = AIHandler()
+    ai: AIHandler = state.ai
     try:
         outcome = await ai.analyze(
             text=result.text,
             provider=request.provider,
             model=request.model,
-            system_prompt=request.system_prompt,
+            system_prompt=request.prompt,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
-    except AIError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         logger.error("Error inesperado en /pipeline: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -191,3 +183,4 @@ async def pipeline(request: PipelineRequest, fastapi_request: Request) -> Dict[s
         },
         "analysis": outcome,
     }
+
